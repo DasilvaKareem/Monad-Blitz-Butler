@@ -2,13 +2,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-
-import Image from "next/image";
+import { useActiveAccount } from "thirdweb/react";
 
 // UI components
 import Transcript from "./components/Transcript";
 import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
+import { WalletConnect } from "@/components/WalletConnect";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -42,6 +42,52 @@ import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
 
 function App() {
   const searchParams = useSearchParams()!;
+  const account = useActiveAccount();
+
+  // Wallet funding state
+  const [agentBalance, setAgentBalance] = useState<number>(0);
+  const [depositAmount, setDepositAmount] = useState<string>("3");
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [agentWallet, setAgentWallet] = useState<string>("");
+  const [showFundingPanel, setShowFundingPanel] = useState(false);
+
+  // Fetch balance
+  const fetchBalance = async () => {
+    try {
+      const res = await fetch("/api/balance");
+      const data = await res.json();
+      setAgentBalance(data.balance);
+      setAgentWallet(data.agentWallet);
+    } catch (error) {
+      console.error("Failed to fetch balance:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchBalance();
+  }, []);
+
+  const handleDeposit = async () => {
+    if (!account?.address) return;
+    setIsDepositing(true);
+    try {
+      const res = await fetch("/api/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: parseFloat(depositAmount),
+          userWallet: account.address,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAgentBalance(data.newBalance);
+      }
+    } catch (error) {
+      console.error("Deposit failed:", error);
+    }
+    setIsDepositing(false);
+  };
 
   // ---------------------------------------------------------------------
   // Codec selector – lets you toggle between wide-band Opus (48 kHz)
@@ -437,89 +483,86 @@ function App() {
   const agentSetKey = searchParams.get("agentConfig") || "default";
 
   return (
-    <div className="text-base flex flex-col h-screen bg-gray-100 text-gray-800 relative">
-      <div className="p-5 text-lg font-semibold flex justify-between items-center">
+    <div className="text-base flex flex-col h-screen bg-noir text-ivory relative font-body">
+      {/* Header */}
+      <div className="p-4 flex justify-between items-center border-b border-border bg-charcoal">
         <div
-          className="flex items-center cursor-pointer"
+          className="flex items-center cursor-pointer gap-3"
           onClick={() => window.location.reload()}
         >
-          <div>
-            <Image
-              src="/openai-logomark.svg"
-              alt="OpenAI Logo"
-              width={20}
-              height={20}
-              className="mr-2"
-            />
-          </div>
-          <div>
-            Realtime API <span className="text-gray-500">Agents</span>
+          <div className="w-8 h-8 star-motif" />
+          <div className="font-display text-2xl font-medium text-gold-gradient">
+            Monad Blitz Butler
           </div>
         </div>
-        <div className="flex items-center">
-          <label className="flex items-center text-base gap-1 mr-2 font-medium">
-            Scenario
-          </label>
-          <div className="relative inline-block">
-            <select
-              value={agentSetKey}
-              onChange={handleAgentChange}
-              className="appearance-none border border-gray-300 rounded-lg text-base px-2 py-1 pr-8 cursor-pointer font-normal focus:outline-none"
-            >
-              {Object.keys(allAgentSets).map((agentKey) => (
-                <option key={agentKey} value={agentKey}>
-                  {agentKey}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-600">
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.25 3.65a.75.75 0 01-1.04 0L5.21 8.27a.75.75 0 01.02-1.06z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-          </div>
 
-          {agentSetKey && (
-            <div className="flex items-center ml-6">
-              <label className="flex items-center text-base gap-1 mr-2 font-medium">
-                Agent
-              </label>
-              <div className="relative inline-block">
-                <select
-                  value={selectedAgentName}
-                  onChange={handleSelectedAgentChange}
-                  className="appearance-none border border-gray-300 rounded-lg text-base px-2 py-1 pr-8 cursor-pointer font-normal focus:outline-none"
-                >
-                  {selectedAgentConfigSet?.map((agent) => (
-                    <option key={agent.name} value={agent.name}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-600">
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.25 3.65a.75.75 0 01-1.04 0L5.21 8.27a.75.75 0 01.02-1.06z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Center: Agent Balance & Funding */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 bg-surface border border-border-subtle rounded-xl px-4 py-2.5">
+            <span className="text-sm text-text-secondary tracking-wide">Agent Balance</span>
+            <span className="text-xl font-display font-semibold text-gold">${agentBalance.toFixed(2)}</span>
+          </div>
+          <button
+            onClick={() => setShowFundingPanel(!showFundingPanel)}
+            className="btn-gold text-sm"
+          >
+            Fund Agent
+          </button>
+        </div>
+
+        {/* Right: Wallet Connect */}
+        <div className="flex items-center gap-4">
+          <WalletConnect />
         </div>
       </div>
 
-      <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
+      {/* Funding Panel (collapsible) */}
+      {showFundingPanel && account?.address && (
+        <div className="bg-gradient-to-r from-gold-dark/10 via-gold/5 to-gold-dark/10 border-b border-gold/20 p-4">
+          <div className="flex items-center justify-between max-w-2xl mx-auto">
+            <div className="text-sm">
+              <p className="eyebrow mb-1">Agent Wallet</p>
+              <p className="font-mono text-xs text-text-secondary">{agentWallet}</p>
+            </div>
+            <div className="flex gap-3 items-center">
+              <input
+                type="number"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                className="input-field w-24 text-sm"
+                placeholder="Amount"
+                min="0.1"
+                step="0.1"
+              />
+              <button
+                onClick={handleDeposit}
+                disabled={isDepositing}
+                className="btn-gold text-sm"
+              >
+                {isDepositing ? "Loading..." : "Load Agent"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scenario/Agent selectors - hidden but functional */}
+      <div className="hidden">
+        <select value={agentSetKey} onChange={handleAgentChange}>
+          {Object.keys(allAgentSets).map((agentKey) => (
+            <option key={agentKey} value={agentKey}>{agentKey}</option>
+          ))}
+        </select>
+        {agentSetKey && (
+          <select value={selectedAgentName} onChange={handleSelectedAgentChange}>
+            {selectedAgentConfigSet?.map((agent) => (
+              <option key={agent.name} value={agent.name}>{agent.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <div className="flex flex-1 gap-3 px-3 py-3 overflow-hidden relative bg-noir">
         <Transcript
           userText={userText}
           setUserText={setUserText}

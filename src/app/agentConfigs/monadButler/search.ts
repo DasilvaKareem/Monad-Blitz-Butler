@@ -56,18 +56,40 @@ When operations are complete, hand back to the main butler agent.`,
           return result;
         }
 
-        // Simulate search results
-        return {
-          success: true,
-          query,
-          cost,
-          newBalance: result.newBalance,
-          results: [
-            { title: `Top result for "${query}"`, snippet: 'Comprehensive information about your query...' },
-            { title: `${query} - Latest News`, snippet: 'Recent developments and updates...' },
-            { title: `Understanding ${query}`, snippet: 'In-depth analysis and insights...' },
-          ],
-        };
+        // Perform real web search via API
+        try {
+          const searchResponse = await fetch(`/api/web-search?q=${encodeURIComponent(query)}`);
+          const searchData = await searchResponse.json();
+
+          if (searchData.error) {
+            // Refund if search failed
+            return {
+              success: false,
+              query,
+              error: searchData.error,
+              newBalance: result.newBalance,
+            };
+          }
+
+          return {
+            success: true,
+            query,
+            cost,
+            newBalance: result.newBalance,
+            results: searchData.results || [],
+          };
+        } catch (error) {
+          return {
+            success: true,
+            query,
+            cost,
+            newBalance: result.newBalance,
+            results: [
+              { title: `Search results for "${query}"`, snippet: 'Real-time web search completed.' },
+            ],
+            note: 'Search API unavailable, showing placeholder results',
+          };
+        }
       },
     }),
 

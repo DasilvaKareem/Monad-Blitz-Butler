@@ -41,26 +41,26 @@ export function GuardrailChip({
     case "PENDING":
       IconComponent = ClockIcon;
       label = "Pending";
-      textColorClass = "text-gray-600";
+      textColorClass = "text-text-muted";
       break;
     case "PASS":
       IconComponent = CheckCircledIcon;
       label = "Pass";
-      textColorClass = "text-green-600";
+      textColorClass = "text-gold";
       break;
     case "FAIL":
       IconComponent = CrossCircledIcon;
       label = "Fail";
-      textColorClass = "text-red-500";
+      textColorClass = "text-bordeaux-light";
       break;
     default:
       IconComponent = ClockIcon;
       label = "Pending";
-      textColorClass = "text-gray-600";
+      textColorClass = "text-text-muted";
   }
 
   return (
-    <div className="text-xs">
+    <div className="text-xs text-text-secondary">
       <div
         onClick={() => {
           // Only allow toggling the expanded state for PASS/FAIL cases.
@@ -86,12 +86,12 @@ export function GuardrailChip({
           }`}
         >
           <div className="pt-2 text-xs">
-            <strong>
+            <strong className="text-ivory">
               Moderation Category: {formatCategory(guardrailResult.category)}
             </strong>
-            <div>{guardrailResult.rationale}</div>
+            <div className="text-text-secondary">{guardrailResult.rationale}</div>
             {guardrailResult.testText && (
-              <blockquote className="mt-1 border-l-2 border-gray-300 pl-2 text-gray-400">
+              <blockquote className="mt-1 border-l-2 border-gold/30 pl-2 text-text-muted">
                 {guardrailResult.testText}
               </blockquote>
             )}
@@ -100,4 +100,4 @@ export function GuardrailChip({
       )}
     </div>
   );
-} 
+}
