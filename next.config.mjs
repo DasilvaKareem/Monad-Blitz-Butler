@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Use webpack instead of turbopack for better compatibility with thirdweb
   webpack: (config, { isServer }) => {
     // Fix for WalletConnect / pino dependencies
     if (!isServer) {
@@ -18,10 +17,22 @@ const nextConfig = {
       use: 'ignore-loader',
     });
 
+    // Cache for faster rebuilds
+    config.cache = {
+      type: 'filesystem',
+      buildDependencies: {
+        config: [import.meta.url],
+      },
+    };
+
     return config;
   },
   // Transpile thirdweb and related packages
   transpilePackages: ['thirdweb'],
+  // Experimental features for faster dev
+  experimental: {
+    optimizePackageImports: ['thirdweb', 'ethers'],
+  },
 };
 
 export default nextConfig;
