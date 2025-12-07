@@ -1,0 +1,48 @@
+{
+  "name": "monad-blitz-butler-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Monad Blitz Butler - AI-powered food ordering with crypto payments",
+  "main": "dist/server.js",
+  "bin": {
+    "monad-blitz-butler-mcp": "./dist/server.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx server.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai",
+    "food-ordering",
+    "monad",
+    "blockchain",
+    "crypto",
+    "x402"
+  ],
+  "author": "Monad Blitz Butler",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/monad-blitz-butler"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

@@ -9,6 +9,7 @@ import Transcript from "./components/Transcript";
 import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
 import { WalletConnect } from "@/components/WalletConnect";
+import { ConfigureModal, useUserPreferences } from "./components/ConfigureModal";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -50,6 +51,10 @@ function App() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [agentWallet, setAgentWallet] = useState<string>("");
   const [showFundingPanel, setShowFundingPanel] = useState(false);
+
+  // User preferences
+  const [showConfigureModal, setShowConfigureModal] = useState(false);
+  const { preferences, savePreferences, getPreferencesContext } = useUserPreferences();
 
   // Fetch balance
   const fetchBalance = async () => {
@@ -274,6 +279,7 @@ function App() {
           outputGuardrails: [guardrail],
           extraContext: {
             addTranscriptBreadcrumb,
+            userPreferences: getPreferencesContext(),
           },
         });
       } catch (err) {
@@ -510,8 +516,18 @@ function App() {
           </button>
         </div>
 
-        {/* Right: Wallet Connect */}
-        <div className="flex items-center gap-4">
+        {/* Right: Configure & Wallet Connect */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowConfigureModal(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-border rounded-lg text-text-secondary hover:border-gold/30 hover:text-gold transition-colors text-sm"
+          >
+            <span>⚙️</span>
+            <span className="hidden sm:inline">Configure</span>
+            {(preferences.dietaryOptions.length > 0 || preferences.allergies.length > 0 || preferences.location) && (
+              <span className="w-2 h-2 bg-gold rounded-full"></span>
+            )}
+          </button>
           <WalletConnect />
         </div>
       </div>
@@ -590,6 +606,14 @@ function App() {
         setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
         codec={urlCodec}
         onCodecChange={handleCodecChange}
+      />
+
+      {/* Configure Modal */}
+      <ConfigureModal
+        isOpen={showConfigureModal}
+        onClose={() => setShowConfigureModal(false)}
+        onSave={savePreferences}
+        initialPreferences={preferences}
       />
     </div>
   );

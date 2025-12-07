@@ -1,4 +1,4 @@
-"use-client";
+"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -7,6 +7,8 @@ import Image from "next/image";
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { GuardrailChip } from "./GuardrailChip";
+import { RestaurantGrid, MenuItemsDisplay, SearchResultsDisplay } from "./RestaurantCard";
+import { OrderConfirmationDisplay } from "./OrderCard";
 
 export interface TranscriptProps {
   userText: string;
@@ -162,10 +164,16 @@ function Transcript({
                 </div>
               );
             } else if (type === "BREADCRUMB") {
+              // Check if this breadcrumb contains restaurant, menu, or order data
+              const hasRestaurants = data?.restaurants && Array.isArray(data.restaurants);
+              const hasMenuItems = data?.menuItems && Array.isArray(data.menuItems);
+              const hasSearchResults = data?.results && Array.isArray(data.results);
+              const isOrderResult = data?.orderId || (data?.restaurant && data?.items && data?.totalCost !== undefined);
+
               return (
                 <div
                   key={itemId}
-                  className="flex flex-col justify-start items-start text-text-muted text-sm"
+                  className="flex flex-col justify-start items-start text-text-muted text-sm w-full"
                 >
                   <span className="text-xs font-mono text-text-muted">{timestamp}</span>
                   <div
@@ -185,12 +193,58 @@ function Transcript({
                     )}
                     {title}
                   </div>
-                  {expanded && data && (
+
+                  {/* Rich display for restaurants */}
+                  {hasRestaurants && (
+                    <div className="w-full mt-2">
+                      <RestaurantGrid
+                        restaurants={data.restaurants}
+                        onViewMenu={(website) => console.log("View menu:", website)}
+                        onCall={(phone, name) => console.log("Call:", phone, name)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Rich display for menu items */}
+                  {hasMenuItems && (
+                    <div className="w-full">
+                      <MenuItemsDisplay menuItems={data.menuItems} />
+                    </div>
+                  )}
+
+                  {/* Rich display for search results */}
+                  {hasSearchResults && !hasRestaurants && (
+                    <div className="w-full">
+                      <SearchResultsDisplay results={data.results} type="search" />
+                    </div>
+                  )}
+
+                  {/* Rich display for order confirmation */}
+                  {isOrderResult && (
+                    <div className="w-full mt-2">
+                      <OrderConfirmationDisplay orderData={data} />
+                    </div>
+                  )}
+
+                  {/* Raw JSON for other data */}
+                  {expanded && data && !hasRestaurants && !hasMenuItems && !hasSearchResults && !isOrderResult && (
                     <div className="text-text-secondary text-left">
                       <pre className="border-l-2 ml-1 border-gold/30 whitespace-pre-wrap break-words font-mono text-xs mb-2 mt-2 pl-2">
                         {JSON.stringify(data, null, 2)}
                       </pre>
                     </div>
+                  )}
+
+                  {/* Show raw JSON toggle for rich displays */}
+                  {expanded && data && (hasRestaurants || hasMenuItems || hasSearchResults || isOrderResult) && (
+                    <details className="mt-2 w-full">
+                      <summary className="text-xs text-text-muted cursor-pointer hover:text-gold">
+                        View raw data
+                      </summary>
+                      <pre className="border-l-2 ml-1 border-gold/30 whitespace-pre-wrap break-words font-mono text-xs mb-2 mt-2 pl-2 text-text-secondary">
+                        {JSON.stringify(data, null, 2)}
+                      </pre>
+                    </details>
                   )}
                 </div>
               );

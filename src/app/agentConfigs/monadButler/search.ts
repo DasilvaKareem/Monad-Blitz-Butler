@@ -9,22 +9,26 @@ export const searchAgent = new RealtimeAgent({
 
   instructions: `You are the Search & API Agent for Blitz Butler.
 
-You handle all paid operations:
-- Web searches: 1 USDC per search
-- API calls: 0.50 USDC per call (weather, stocks, news, crypto)
+You handle operations including:
+- Web searches (FREE)
+- API calls for weather, stocks, news, crypto (FREE)
+- Restaurant/food search (FREE)
+- Menu lookups (FREE)
+- PLACING ORDERS: This is the ONLY paid action - costs vary by order
 
-IMPORTANT:
-1. Always check balance before making paid calls
-2. Tell the user the cost before executing
-3. If insufficient funds, explain and suggest depositing more
-4. After each paid action, report the cost and remaining balance
+FOOD ORDERING FLOW:
+1. Use findRestaurants to search for places near the user (free)
+2. Share the results with names, ratings, prices, and websites
+3. If user wants menu details, use getMenuDetails with the restaurant's website (free)
+4. Help user decide what to order based on menu info
+5. When they're ready to place an order, use placeOrder (PAID - costs money from balance)
 
 When operations are complete, hand back to the main butler agent.`,
 
   tools: [
     tool({
-      name: 'paidSearch',
-      description: 'Perform a paid web search. Costs 1 USDC.',
+      name: 'webSearch',
+      description: 'Perform a web search. FREE.',
       parameters: {
         type: 'object',
         properties: {
@@ -38,64 +42,37 @@ When operations are complete, hand back to the main butler agent.`,
       },
       execute: async (input: any) => {
         const { query } = input as { query: string };
-        const cost = 1;
-        const balance = getBalance();
 
-        if (balance < cost) {
-          return {
-            success: false,
-            error: '402 Payment Required',
-            message: `Insufficient funds. Need ${cost} USDC, have ${balance} USDC. Please deposit more funds.`,
-            required: cost,
-            available: balance,
-          };
-        }
-
-        const result = spendBalance(cost);
-        if (!result.success) {
-          return result;
-        }
-
-        // Perform real web search via API
         try {
           const searchResponse = await fetch(`/api/web-search?q=${encodeURIComponent(query)}`);
           const searchData = await searchResponse.json();
 
           if (searchData.error) {
-            // Refund if search failed
             return {
               success: false,
               query,
               error: searchData.error,
-              newBalance: result.newBalance,
             };
           }
 
           return {
             success: true,
             query,
-            cost,
-            newBalance: result.newBalance,
             results: searchData.results || [],
           };
         } catch (error) {
           return {
-            success: true,
+            success: false,
             query,
-            cost,
-            newBalance: result.newBalance,
-            results: [
-              { title: `Search results for "${query}"`, snippet: 'Real-time web search completed.' },
-            ],
-            note: 'Search API unavailable, showing placeholder results',
+            error: 'Search failed',
           };
         }
       },
     }),
 
     tool({
-      name: 'paidApiCall',
-      description: 'Make a paid API call. Costs 0.50 USDC. Available services: weather, stocks, news, crypto.',
+      name: 'apiCall',
+      description: 'Make an API call. FREE. Available services: weather, stocks, news, crypto.',
       parameters: {
         type: 'object',
         properties: {
@@ -114,23 +91,6 @@ When operations are complete, hand back to the main butler agent.`,
       },
       execute: async (input: any) => {
         const { service, params } = input as { service: string; params?: string };
-        const cost = 0.5;
-        const balance = getBalance();
-
-        if (balance < cost) {
-          return {
-            success: false,
-            error: '402 Payment Required',
-            message: `Insufficient funds. Need ${cost} USDC, have ${balance} USDC. Please deposit more funds.`,
-            required: cost,
-            available: balance,
-          };
-        }
-
-        const result = spendBalance(cost);
-        if (!result.success) {
-          return result;
-        }
 
         // Simulate API responses
         const responses: Record<string, object> = {
@@ -169,8 +129,6 @@ When operations are complete, hand back to the main butler agent.`,
           success: true,
           service,
           params: params || 'default',
-          cost,
-          newBalance: result.newBalance,
           timestamp: new Date().toISOString(),
           data: responses[service] || { error: 'Unknown service' },
         };
@@ -178,39 +136,148 @@ When operations are complete, hand back to the main butler agent.`,
     }),
 
     tool({
-      name: 'estimateCost',
-      description: 'Estimate the cost of an operation before executing it',
+      name: 'findRestaurants',
+      description: 'Search for restaurants and food places nearby. FREE. Returns name, rating, price, website, phone, and hours.',
       parameters: {
         type: 'object',
         properties: {
-          operation: {
+          query: {
             type: 'string',
-            enum: ['search', 'weather', 'stocks', 'news', 'crypto'],
-            description: 'The operation to estimate',
+            description: 'What to search for (e.g., "pizza", "chinese food", "sushi near me")',
+          },
+          location: {
+            type: 'string',
+            description: 'Location as "latitude,longitude" or leave empty for default',
           },
         },
-        required: ['operation'],
+        required: ['query'],
         additionalProperties: false,
       },
       execute: async (input: any) => {
-        const { operation } = input as { operation: string };
-        const costs: Record<string, number> = {
-          search: 1.0,
-          weather: 0.5,
-          stocks: 0.5,
-          news: 0.5,
-          crypto: 0.5,
+        const { query, location } = input as { query: string; location?: string };
+
+        try {
+          const url = `/api/places?q=${encodeURIComponent(query)}${location ? `&location=${location}` : ''}`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          return {
+            success: true,
+            query,
+            restaurants: data.results || [],
+          };
+        } catch (error) {
+          return {
+            success: false,
+            query,
+            error: 'Failed to search restaurants',
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'getMenuDetails',
+      description: 'Scrape a restaurant website for menu information, prices, and ordering links. FREE.',
+      parameters: {
+        type: 'object',
+        properties: {
+          website: {
+            type: 'string',
+            description: 'The restaurant website URL to scrape for menu details',
+          },
+        },
+        required: ['website'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { website } = input as { website: string };
+
+        try {
+          const url = `/api/menu-scrape?website=${encodeURIComponent(website)}`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          return {
+            success: true,
+            website,
+            menuLinks: data.menuLinks || [],
+            pricesFound: data.pricesFound || [],
+            foodCategories: data.foodCategories || [],
+            menuItems: data.menuItems || [],
+            note: data.note,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            website,
+            error: 'Failed to scrape menu',
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'placeOrder',
+      description: 'Place a food order. PAID - costs the price of the order. This is the only tool that charges money.',
+      parameters: {
+        type: 'object',
+        properties: {
+          restaurant: {
+            type: 'string',
+            description: 'Name of the restaurant',
+          },
+          items: {
+            type: 'string',
+            description: 'Items to order (comma separated)',
+          },
+          totalCost: {
+            type: 'number',
+            description: 'Total cost of the order in USDC',
+          },
+          deliveryAddress: {
+            type: 'string',
+            description: 'Delivery address',
+          },
+        },
+        required: ['restaurant', 'items', 'totalCost'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { restaurant, items, totalCost, deliveryAddress } = input as {
+          restaurant: string;
+          items: string;
+          totalCost: number;
+          deliveryAddress?: string;
         };
+
         const balance = getBalance();
-        const cost = costs[operation] || 0;
+
+        if (balance < totalCost) {
+          return {
+            success: false,
+            error: '402 Payment Required',
+            message: `Insufficient funds. Order costs ${totalCost} USDC, but you only have ${balance} USDC. Please deposit more funds.`,
+            required: totalCost,
+            available: balance,
+          };
+        }
+
+        const result = spendBalance(totalCost);
+        if (!result.success) {
+          return result;
+        }
 
         return {
-          operation,
-          cost,
-          currency: 'USDC',
-          currentBalance: balance,
-          canAfford: balance >= cost,
-          shortfall: balance < cost ? cost - balance : 0,
+          success: true,
+          orderId: `ORD-${Date.now()}`,
+          restaurant,
+          items: items.split(',').map(i => i.trim()),
+          totalCost,
+          newBalance: result.newBalance,
+          deliveryAddress: deliveryAddress || 'Pickup',
+          estimatedDelivery: '30-45 minutes',
+          message: `Order placed successfully! ${totalCost} USDC has been charged.`,
         };
       },
     }),
