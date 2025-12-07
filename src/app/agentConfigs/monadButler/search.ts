@@ -251,7 +251,7 @@ When operations are complete, hand back to the main butler agent.`,
           deliveryAddress?: string;
         };
 
-        const balance = getBalance();
+        const balance = await getBalance();
 
         if (balance < totalCost) {
           return {
@@ -263,7 +263,7 @@ When operations are complete, hand back to the main butler agent.`,
           };
         }
 
-        const result = spendBalance(totalCost);
+        const result = await spendBalance(totalCost, `Order at ${restaurant}`);
         if (!result.success) {
           return result;
         }

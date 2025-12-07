@@ -68,18 +68,10 @@ function App() {
     }
   };
 
-  // Initial fetch and poll every 2 seconds while connected
+  // Initial fetch
   useEffect(() => {
     fetchBalance();
   }, []);
-
-  // Poll balance while session is connected (to catch agent spending)
-  useEffect(() => {
-    if (sessionStatus === "CONNECTED") {
-      const interval = setInterval(fetchBalance, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [sessionStatus]);
 
   const handleDeposit = async () => {
     setIsDepositing(true);
@@ -164,6 +156,14 @@ function App() {
 
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("DISCONNECTED");
+
+  // Poll balance while session is connected (to catch agent spending)
+  useEffect(() => {
+    if (sessionStatus === "CONNECTED") {
+      const interval = setInterval(fetchBalance, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionStatus]);
 
   const [isEventsPaneExpanded, setIsEventsPaneExpanded] =
     useState<boolean>(true);

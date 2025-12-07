@@ -1,7 +1,7 @@
 import { RealtimeAgent, tool } from '@openai/agents/realtime';
 
-// Helper functions to interact with server-side balance API
-async function getBalance(): Promise<number> {
+// Helper functions to interact with server-side balance API (exported for other agents)
+export async function getBalance(): Promise<number> {
   try {
     const response = await fetch('/api/balance');
     const data = await response.json();
@@ -12,7 +12,22 @@ async function getBalance(): Promise<number> {
   }
 }
 
-async function spendBalance(amount: number, description?: string): Promise<{ success: boolean; newBalance: number; error?: string }> {
+export async function addBalance(amount: number, userWallet?: string): Promise<number> {
+  try {
+    const response = await fetch('/api/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, userWallet: userWallet || 'anonymous' }),
+    });
+    const data = await response.json();
+    return data.newBalance || 0;
+  } catch (error) {
+    console.error('Failed to add balance:', error);
+    return 0;
+  }
+}
+
+export async function spendBalance(amount: number, description?: string): Promise<{ success: boolean; newBalance: number; error?: string }> {
   try {
     const response = await fetch('/api/spend', {
       method: 'POST',
@@ -44,13 +59,13 @@ export const butlerAgent = new RealtimeAgent({
 
   instructions: `You are Blitz Butler, an AI agent with a real cryptocurrency wallet on Monad blockchain.
 
-You can help users find food, search the web, get info, and place orders.
+You can help users find food, order groceries, search the web, get info, and place orders.
 
 USER PREFERENCES (check context.userPreferences):
 - The user may have set their location, dietary restrictions, allergies, cuisine preferences, and price range
 - ALWAYS respect food allergies - NEVER suggest foods containing their allergens
 - Prioritize their dietary preferences (vegan, vegetarian, gluten-free, halal, kosher, etc.)
-- Use their location when searching for restaurants
+- Use their location when searching for restaurants or groceries
 - Filter by their preferred cuisines and price range when applicable
 - If they have preferences set, mention that you're using them when searching
 
@@ -59,9 +74,11 @@ x402 PRICING (all services require payment in USDK - test stablecoin):
 - Web searches: 0.5 USDK per search
 - Menu image analysis (AI Vision): 0.25 USDK per image
 - Place orders: 1 USDK service fee + food cost + tax + delivery fees
+- GoPuff grocery orders: 1 USDK service fee + product cost
 - DoorDash delivery: delivery estimate in USDK
 - Finding restaurants: FREE
 - Viewing menus: FREE
+- Searching GoPuff products: FREE
 - Check balance: FREE
 - Fund agent wallet: FREE (for demo/testing)
 
@@ -81,6 +98,21 @@ WHAT YOU CAN DO:
 9. Call businesses on behalf of the user (PAID - 0.1 USDK)
 10. Request DoorDash delivery for orders (PAID - delivery fee applies)
 
+GOPUFF GROCERY SHOPPING (30-minute delivery!):
+11. Search GoPuff products - snacks, drinks, groceries, household items (FREE)
+12. Create a GoPuff cart and add items (FREE)
+13. Place GoPuff orders with delivery (PAID - 1 USDK + product cost)
+14. Get payment link for GoPuff checkout (payment handled by GoPuff/Stripe)
+
+GOPUFF ORDERING FLOW:
+1. Use searchGroceries to find products near the user's location
+2. Products have location_id - you need this to create a cart
+3. Use createGroceryCart with the location_id to start a cart
+4. Use addToGroceryCart to add products (need cart_id and product_id)
+5. Use placeGroceryOrder to submit the order with customer details
+6. Use getGroceryPaymentLink to get a Stripe checkout link for payment
+7. Once paid, GoPuff delivers in ~30 minutes!
+
 MENU IMAGE ANALYSIS:
 When getMenuDetails returns menu images, you can use analyzeMenuImage to extract exact prices.
 This uses GPT-4 Vision to read the menu and return structured item names, descriptions, and prices.
@@ -99,6 +131,7 @@ When they want menu details, use getMenuDetails with the restaurant website.
 When they confirm an order, use placeOrder (this charges their balance).
 When users want to call a business, use callBusiness with the phone number and purpose.
 When users want delivery, use requestDeliveryQuote first, then confirmDelivery after approval.
+When users want groceries, snacks, or quick delivery items, use searchGroceries for GoPuff products.
 
 Be helpful and proactive. Don't ask about costs for searches - they're free!`,
 
@@ -982,6 +1015,451 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
           return {
             success: false,
             error: 'Failed to cancel delivery',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    // ============ GOPUFF GROCERY SHOPPING TOOLS ============
+
+    tool({
+      name: 'searchGroceries',
+      description: 'Search for grocery products on GoPuff. FREE. Returns products with prices, images, and location info. 30-minute delivery available!',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'What to search for (e.g., "chips", "energy drinks", "ice cream", "toilet paper")',
+          },
+          latitude: {
+            type: 'number',
+            description: 'Latitude of delivery location',
+          },
+          longitude: {
+            type: 'number',
+            description: 'Longitude of delivery location',
+          },
+          category: {
+            type: 'string',
+            description: 'Optional category filter (e.g., "Snacks", "Beverages", "Household")',
+          },
+        },
+        required: ['query', 'latitude', 'longitude'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { query, latitude, longitude, category } = input as {
+          query: string;
+          latitude: number;
+          longitude: number;
+          category?: string;
+        };
+
+        try {
+          const params = new URLSearchParams({
+            query,
+            latitude: String(latitude),
+            longitude: String(longitude),
+          });
+          if (category) params.append('category', category);
+
+          const response = await fetch(`/api/grocery/search?${params}`);
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to search products',
+              details: data.details,
+            };
+          }
+
+          return {
+            success: true,
+            query,
+            products: data.products || [],
+            location: data.location,
+            message: `Found ${(data.products || []).length} products matching "${query}" on GoPuff`,
+            note: 'Use the location_id and product_id to add items to cart',
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to search groceries',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'createGroceryCart',
+      description: 'Create a new GoPuff shopping cart for a specific location. FREE. Required before adding items.',
+      parameters: {
+        type: 'object',
+        properties: {
+          location_id: {
+            type: 'string',
+            description: 'The GoPuff location ID (from searchGroceries results)',
+          },
+        },
+        required: ['location_id'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { location_id } = input as { location_id: string };
+
+        try {
+          const response = await fetch('/api/grocery/cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ location_id }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to create cart',
+              details: data.details,
+            };
+          }
+
+          return {
+            success: true,
+            cartId: data.cartId,
+            location_id,
+            message: `Cart created! Cart ID: ${data.cartId}. Now you can add items.`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to create cart',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'addToGroceryCart',
+      description: 'Add a product to the GoPuff cart. FREE.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cart_id: {
+            type: 'string',
+            description: 'The cart ID from createGroceryCart',
+          },
+          product_id: {
+            type: 'string',
+            description: 'The product ID from searchGroceries',
+          },
+          product_name: {
+            type: 'string',
+            description: 'Name of the product (for display)',
+          },
+          quantity: {
+            type: 'number',
+            description: 'Quantity to add (default 1)',
+          },
+        },
+        required: ['cart_id', 'product_id', 'product_name'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { cart_id, product_id, product_name, quantity } = input as {
+          cart_id: string;
+          product_id: string;
+          product_name: string;
+          quantity?: number;
+        };
+
+        try {
+          const response = await fetch('/api/grocery/cart/item', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cart_id,
+              product_id,
+              product_name,
+              quantity: quantity || 1,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to add item',
+              details: data.details,
+            };
+          }
+
+          return {
+            success: true,
+            cart_id,
+            product_id,
+            product_name,
+            quantity: quantity || 1,
+            message: `Added ${quantity || 1}x ${product_name} to cart`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to add item to cart',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'placeGroceryOrder',
+      description: 'Place a GoPuff grocery order. PAID - costs 1 USDK service fee. Creates order and returns payment link.',
+      parameters: {
+        type: 'object',
+        properties: {
+          location_id: {
+            type: 'string',
+            description: 'The GoPuff location ID',
+          },
+          items: {
+            type: 'array',
+            description: 'Array of items with product_id and quantity',
+            items: {
+              type: 'object',
+              properties: {
+                product_id: { type: 'string' },
+                quantity: { type: 'number' },
+              },
+            },
+          },
+          customer_name: {
+            type: 'string',
+            description: 'Customer full name',
+          },
+          customer_email: {
+            type: 'string',
+            description: 'Customer email',
+          },
+          customer_phone: {
+            type: 'string',
+            description: 'Customer phone number (format: +12345678901)',
+          },
+          street_address: {
+            type: 'string',
+            description: 'Street address for delivery',
+          },
+          city: {
+            type: 'string',
+            description: 'City',
+          },
+          state: {
+            type: 'string',
+            description: 'State (2-letter code, e.g., NY, CA)',
+          },
+          zip: {
+            type: 'string',
+            description: 'ZIP/Postal code',
+          },
+          dropoff_instructions: {
+            type: 'string',
+            description: 'Delivery instructions (e.g., "Leave at door", "Call when arriving")',
+          },
+          tip: {
+            type: 'number',
+            description: 'Tip amount in dollars',
+          },
+        },
+        required: ['location_id', 'items', 'customer_name', 'customer_phone', 'street_address', 'city', 'state', 'zip'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const {
+          location_id,
+          items,
+          customer_name,
+          customer_email,
+          customer_phone,
+          street_address,
+          city,
+          state,
+          zip,
+          dropoff_instructions,
+          tip,
+        } = input as {
+          location_id: string;
+          items: Array<{ product_id: string; quantity: number }>;
+          customer_name: string;
+          customer_email?: string;
+          customer_phone: string;
+          street_address: string;
+          city: string;
+          state: string;
+          zip: string;
+          dropoff_instructions?: string;
+          tip?: number;
+        };
+
+        const SERVICE_FEE = 1.0;
+        const balance = await getBalance();
+
+        if (balance < SERVICE_FEE) {
+          return {
+            success: false,
+            error: '402 Payment Required',
+            message: `Insufficient funds. GoPuff order requires ${SERVICE_FEE} USDK service fee, but you only have ${balance} USDK.`,
+            required: SERVICE_FEE,
+            available: balance,
+          };
+        }
+
+        try {
+          const response = await fetch('/api/grocery/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location_id,
+              items,
+              fulfillment_method: 'Delivery',
+              dropoff_instructions,
+              tip,
+              customer: {
+                name: customer_name,
+                email: customer_email,
+                phone_number: customer_phone,
+                address: {
+                  street_address,
+                  city,
+                  region: state,
+                  postal_code: zip,
+                  country: 'US',
+                },
+              },
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to create order',
+              details: data.details,
+            };
+          }
+
+          // Charge service fee
+          const chargeResult = await spendBalance(SERVICE_FEE, 'GoPuff grocery order');
+
+          return {
+            success: true,
+            orderId: data.orderId,
+            order: data.order,
+            serviceFee: SERVICE_FEE,
+            newBalance: chargeResult.newBalance,
+            message: `GoPuff order created! Order ID: ${data.orderId}. Use getGroceryPaymentLink to get the payment link. Charged ${SERVICE_FEE} USDK service fee.`,
+            nextStep: 'Call getGroceryPaymentLink with this orderId to get the Stripe checkout link',
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to place order',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'getGroceryPaymentLink',
+      description: 'Get the Stripe payment link for a GoPuff order. Customer pays directly to GoPuff.',
+      parameters: {
+        type: 'object',
+        properties: {
+          orderId: {
+            type: 'string',
+            description: 'The order ID from placeGroceryOrder',
+          },
+        },
+        required: ['orderId'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { orderId } = input as { orderId: string };
+
+        try {
+          const response = await fetch(`/api/grocery/order/payment?orderId=${orderId}`);
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to get payment link',
+              details: data.details,
+            };
+          }
+
+          return {
+            success: true,
+            orderId,
+            paymentLink: data.paymentLink,
+            message: `Payment link ready! Customer should complete payment at: ${data.paymentLink}\n\nOnce paid, GoPuff will deliver in approximately 30 minutes!`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to get payment link',
+            details: String(error),
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'getGroceryOrderStatus',
+      description: 'Check the status of a GoPuff order.',
+      parameters: {
+        type: 'object',
+        properties: {
+          orderId: {
+            type: 'string',
+            description: 'The order ID to check',
+          },
+        },
+        required: ['orderId'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { orderId } = input as { orderId: string };
+
+        try {
+          const response = await fetch(`/api/grocery/order?orderId=${orderId}`);
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to get order status',
+              details: data.details,
+            };
+          }
+
+          return {
+            success: true,
+            orderId,
+            order: data.order,
+            message: `Order status retrieved`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to get order status',
             details: String(error),
           };
         }

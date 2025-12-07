@@ -8,6 +8,7 @@ import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { GuardrailChip } from "./GuardrailChip";
 import { RestaurantGrid, MenuItemsDisplay, SearchResultsDisplay } from "./RestaurantCard";
 import { OrderConfirmationDisplay } from "./OrderCard";
+import { ProductGrid, CartDisplay, GroceryOrderConfirmation } from "./GroceryCard";
 
 export interface TranscriptProps {
   userText: string;
@@ -169,6 +170,11 @@ function Transcript({
               const hasSearchResults = data?.results && Array.isArray(data.results);
               const isOrderResult = data?.orderId || (data?.restaurant && data?.items && data?.totalCost !== undefined);
 
+              // Check for grocery/GoPuff data
+              const hasGroceryProducts = data?.products && Array.isArray(data.products);
+              const hasGroceryCart = data?.cartId || (data?.cart_id && data?.items);
+              const isGroceryOrder = data?.orderId && (data?.paymentLink || data?.nextStep?.includes('getGroceryPaymentLink'));
+
               return (
                 <div
                   key={itemId}
@@ -219,14 +225,44 @@ function Transcript({
                   )}
 
                   {/* Rich display for order confirmation */}
-                  {isOrderResult && (
+                  {isOrderResult && !isGroceryOrder && (
                     <div className="w-full mt-2">
                       <OrderConfirmationDisplay orderData={data} />
                     </div>
                   )}
 
+                  {/* Rich display for grocery products */}
+                  {hasGroceryProducts && (
+                    <div className="w-full mt-2">
+                      <ProductGrid products={data.products} />
+                    </div>
+                  )}
+
+                  {/* Rich display for grocery cart */}
+                  {hasGroceryCart && data.items && (
+                    <div className="w-full mt-2">
+                      <CartDisplay
+                        cartId={data.cartId || data.cart_id}
+                        items={data.items.map((item: any) => ({
+                          product_id: item.product_id,
+                          product_name: item.product_name || item.name,
+                          price: item.price,
+                          quantity: item.quantity || 1,
+                          image: item.image,
+                        }))}
+                      />
+                    </div>
+                  )}
+
+                  {/* Rich display for grocery order confirmation */}
+                  {isGroceryOrder && (
+                    <div className="w-full mt-2">
+                      <GroceryOrderConfirmation orderData={data} />
+                    </div>
+                  )}
+
                   {/* Raw JSON for other data */}
-                  {expanded && data && !hasRestaurants && !hasMenuItems && !hasSearchResults && !isOrderResult && (
+                  {expanded && data && !hasRestaurants && !hasMenuItems && !hasSearchResults && !isOrderResult && !hasGroceryProducts && !hasGroceryCart && !isGroceryOrder && (
                     <div className="text-text-secondary text-left">
                       <pre className="border-l-2 ml-1 border-gold/30 whitespace-pre-wrap break-words font-mono text-xs mb-2 mt-2 pl-2">
                         {JSON.stringify(data, null, 2)}
@@ -235,7 +271,7 @@ function Transcript({
                   )}
 
                   {/* Show raw JSON toggle for rich displays */}
-                  {expanded && data && (hasRestaurants || hasMenuItems || hasSearchResults || isOrderResult) && (
+                  {expanded && data && (hasRestaurants || hasMenuItems || hasSearchResults || isOrderResult || hasGroceryProducts || hasGroceryCart || isGroceryOrder) && (
                     <details className="mt-2 w-full">
                       <summary className="text-xs text-text-muted cursor-pointer hover:text-gold">
                         View raw data

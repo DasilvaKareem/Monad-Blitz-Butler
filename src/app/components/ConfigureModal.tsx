@@ -8,6 +8,7 @@ interface UserPreferences {
   dietaryOptions: string[];
   cuisines: string[];
   priceTier: string;
+  wellnessGoal: string;
 }
 
 const DIETARY_OPTIONS = [
@@ -61,6 +62,13 @@ const COMMON_ALLERGIES = [
   "Sesame",
 ];
 
+const WELLNESS_GOALS = [
+  { value: "none", label: "No Goal", description: "Just looking for good food" },
+  { value: "cut", label: "Cut Weight", description: "Lower calories, high protein, lean foods" },
+  { value: "gain", label: "Gain Muscle", description: "High protein, calorie surplus, nutrient dense" },
+  { value: "recomp", label: "Body Recomposition", description: "High protein, moderate calories, balanced macros" },
+];
+
 interface ConfigureModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -76,6 +84,7 @@ export function ConfigureModal({ isOpen, onClose, onSave, initialPreferences }: 
       dietaryOptions: [],
       cuisines: [],
       priceTier: "any",
+      wellnessGoal: "none",
     }
   );
 
@@ -296,6 +305,38 @@ export function ConfigureModal({ isOpen, onClose, onSave, initialPreferences }: 
               ))}
             </div>
           </div>
+
+          {/* Wellness Goals */}
+          <div>
+            <label className="block text-sm font-medium text-ivory mb-2">
+              💪 Wellness Goal
+            </label>
+            <p className="text-xs text-text-muted mb-3">
+              The AI will recommend foods that align with your fitness goals
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {WELLNESS_GOALS.map((goal) => (
+                <button
+                  key={goal.value}
+                  onClick={() => setPreferences({ ...preferences, wellnessGoal: goal.value })}
+                  className={`p-4 rounded-xl text-left transition-all ${
+                    preferences.wellnessGoal === goal.value
+                      ? "bg-purple-500/20 border-2 border-purple-500/50"
+                      : "bg-surface border border-border hover:border-purple-500/30"
+                  }`}
+                >
+                  <div className={`font-medium ${
+                    preferences.wellnessGoal === goal.value ? "text-purple-400" : "text-ivory"
+                  }`}>
+                    {goal.label}
+                  </div>
+                  <div className="text-xs text-text-muted mt-1">
+                    {goal.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -308,6 +349,7 @@ export function ConfigureModal({ isOpen, onClose, onSave, initialPreferences }: 
                 dietaryOptions: [],
                 cuisines: [],
                 priceTier: "any",
+                wellnessGoal: "none",
               });
             }}
             className="px-4 py-2 text-sm text-text-muted hover:text-ivory transition-colors"
@@ -342,6 +384,7 @@ export function useUserPreferences() {
     dietaryOptions: [],
     cuisines: [],
     priceTier: "any",
+    wellnessGoal: "none",
   });
 
   useEffect(() => {
@@ -376,6 +419,14 @@ export function useUserPreferences() {
     }
     if (preferences.priceTier !== "any") {
       parts.push(`Price range: ${preferences.priceTier}`);
+    }
+    if (preferences.wellnessGoal && preferences.wellnessGoal !== "none") {
+      const goalDescriptions: Record<string, string> = {
+        cut: "Wellness Goal: Cut Weight - Recommend lower calorie, high protein, lean options. Suggest grilled over fried, salads, lean proteins, and portion-conscious choices.",
+        gain: "Wellness Goal: Gain Muscle - Recommend high protein, calorie-dense, nutrient-rich foods. Suggest larger portions, protein shakes, complex carbs, and muscle-building meals.",
+        recomp: "Wellness Goal: Body Recomposition - Recommend high protein, moderate calorie options with balanced macros. Suggest lean proteins with healthy carbs and fats.",
+      };
+      parts.push(goalDescriptions[preferences.wellnessGoal] || `Wellness Goal: ${preferences.wellnessGoal}`);
     }
     return parts.join(". ");
   };
