@@ -53,7 +53,7 @@ export async function spendBalance(amount: number, description?: string): Promis
 
 export const butlerAgent = new RealtimeAgent({
   name: 'butler',
-  voice: 'onyx',
+  voice: 'alloy',
   handoffDescription:
     'Main concierge agent that greets users and helps them navigate wallet operations, paid searches, and API calls.',
 
