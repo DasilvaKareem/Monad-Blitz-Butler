@@ -8,6 +8,7 @@ import { useActiveAccount } from "thirdweb/react";
 import Transcript from "./components/Transcript";
 import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
+import AudioVisualizer from "./components/AudioVisualizer";
 import { WalletConnect } from "@/components/WalletConnect";
 import { ConfigureModal, useUserPreferences } from "./components/ConfigureModal";
 
@@ -177,6 +178,18 @@ function App() {
       return stored ? stored === 'true' : true;
     },
   );
+  const [isVisualizerExpanded, setIsVisualizerExpanded] = useState<boolean>(
+    () => {
+      if (typeof window === 'undefined') return true;
+      const stored = localStorage.getItem('visualizerExpanded');
+      return stored ? stored === 'true' : true;
+    },
+  );
+
+  // Persist visualizer state
+  useEffect(() => {
+    localStorage.setItem('visualizerExpanded', isVisualizerExpanded.toString());
+  }, [isVisualizerExpanded]);
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -596,6 +609,12 @@ function App() {
           }
         />
 
+        <AudioVisualizer
+          isExpanded={isVisualizerExpanded}
+          audioElement={audioElementRef.current}
+          isPlaying={sessionStatus === "CONNECTED" && isAudioPlaybackEnabled}
+        />
+
         <Events isExpanded={isEventsPaneExpanded} />
       </div>
 
@@ -611,6 +630,8 @@ function App() {
         setIsEventsPaneExpanded={setIsEventsPaneExpanded}
         isAudioPlaybackEnabled={isAudioPlaybackEnabled}
         setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
+        isVisualizerExpanded={isVisualizerExpanded}
+        setIsVisualizerExpanded={setIsVisualizerExpanded}
         codec={urlCodec}
         onCodecChange={handleCodecChange}
       />

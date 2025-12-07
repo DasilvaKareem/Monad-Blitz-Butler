@@ -13,6 +13,8 @@ interface BottomToolbarProps {
   setIsEventsPaneExpanded: (val: boolean) => void;
   isAudioPlaybackEnabled: boolean;
   setIsAudioPlaybackEnabled: (val: boolean) => void;
+  isVisualizerExpanded: boolean;
+  setIsVisualizerExpanded: (val: boolean) => void;
   codec: string;
   onCodecChange: (newCodec: string) => void;
 }
@@ -29,6 +31,8 @@ function BottomToolbar({
   setIsEventsPaneExpanded,
   isAudioPlaybackEnabled,
   setIsAudioPlaybackEnabled,
+  isVisualizerExpanded,
+  setIsVisualizerExpanded,
   codec,
   onCodecChange,
 }: BottomToolbarProps) {
@@ -126,6 +130,19 @@ function BottomToolbar({
         />
         <label htmlFor="logs" className="flex items-center cursor-pointer text-text-secondary text-sm">
           Logs
+        </label>
+      </div>
+
+      <div className="flex flex-row items-center gap-2">
+        <input
+          id="visualizer"
+          type="checkbox"
+          checked={isVisualizerExpanded}
+          onChange={(e) => setIsVisualizerExpanded(e.target.checked)}
+          className="w-4 h-4 accent-gold"
+        />
+        <label htmlFor="visualizer" className="flex items-center cursor-pointer text-text-secondary text-sm">
+          Visualizer
         </label>
       </div>
 
