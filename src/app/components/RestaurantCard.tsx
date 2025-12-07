@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import Image from "next/image";
+import React, { useState } from "react";
 
 interface Restaurant {
   name: string;
@@ -40,20 +39,28 @@ export function RestaurantCard({ restaurant, onViewMenu, onCall }: RestaurantCar
     image,
   } = restaurant;
 
-  // Generate a placeholder image URL based on restaurant name
-  const imageUrl = image || `https://source.unsplash.com/400x300/?restaurant,food,${encodeURIComponent(name.split(' ')[0])}`;
+  const [imageError, setImageError] = useState(false);
+
+  // Use provided image or a gradient placeholder
+  const hasImage = image && !imageError;
 
   return (
     <div className="bg-surface-elevated border border-border rounded-xl overflow-hidden hover:border-gold/30 transition-all duration-200">
       {/* Image */}
-      <div className="relative h-32 w-full bg-noir">
-        <Image
-          src={imageUrl}
-          alt={name}
-          fill
-          className="object-cover"
-          unoptimized
-        />
+      <div className="relative h-32 w-full bg-gradient-to-br from-gold/20 to-purple-500/20">
+        {hasImage ? (
+          <img
+            src={image}
+            alt={name}
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={() => setImageError(true)}
+            loading="lazy"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-4xl">🍽️</span>
+          </div>
+        )}
         {isOpen !== null && isOpen !== undefined && (
           <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-xs font-medium ${
             isOpen ? "bg-green-500/90 text-white" : "bg-red-500/90 text-white"

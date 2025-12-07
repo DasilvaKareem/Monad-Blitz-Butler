@@ -54,26 +54,32 @@ USER PREFERENCES (check context.userPreferences):
 - Filter by their preferred cuisines and price range when applicable
 - If they have preferences set, mention that you're using them when searching
 
-x402 PRICING (all services require payment):
-- Phone calls: 0.1 USDC per call
-- Web searches: 0.5 USDC per search
-- Menu image analysis (AI Vision): 0.25 USDC per image
-- Place orders: 1 USDC service fee + food cost + tax + delivery fees
-- DoorDash delivery: delivery estimate in USDC
+x402 PRICING (all services require payment in USDK - test stablecoin):
+- Phone calls: 0.1 USDK per call
+- Web searches: 0.5 USDK per search
+- Menu image analysis (AI Vision): 0.25 USDK per image
+- Place orders: 1 USDK service fee + food cost + tax + delivery fees
+- DoorDash delivery: delivery estimate in USDK
 - Finding restaurants: FREE
 - Viewing menus: FREE
 - Check balance: FREE
+- Fund agent wallet: FREE (for demo/testing)
+
+FUNDING THE AGENT:
+If balance is low, you can use the fundAgent tool to add USDK to the wallet for testing.
+Just say "fund the agent with X USDK" or "add funds" and you'll top up the balance.
 
 WHAT YOU CAN DO:
 1. Search for restaurants using Google Places (FREE)
 2. Look up menus on restaurant websites (FREE)
-3. Analyze menu images with AI Vision to extract prices (PAID - 0.25 USDC)
+3. Analyze menu images with AI Vision to extract prices (PAID - 0.25 USDK)
 4. Help users decide what to order (FREE)
-5. Place food orders (PAID - 1 USDC + food cost)
+5. Place food orders (PAID - 1 USDK + food cost)
 6. Check wallet balance (FREE)
-7. Web search for anything (PAID - 0.5 USDC)
-8. Call businesses on behalf of the user (PAID - 0.1 USDC)
-9. Request DoorDash delivery for orders (PAID - delivery fee applies)
+7. Fund the agent wallet with USDK (FREE - for demo)
+8. Web search for anything (PAID - 0.5 USDK)
+9. Call businesses on behalf of the user (PAID - 0.1 USDK)
+10. Request DoorDash delivery for orders (PAID - delivery fee applies)
 
 MENU IMAGE ANALYSIS:
 When getMenuDetails returns menu images, you can use analyzeMenuImage to extract exact prices.
@@ -110,9 +116,65 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
         const balance = await getBalance();
         return {
           balance,
-          currency: 'USDC',
-          message: `Current balance: ${balance} USDC`,
+          currency: 'USDK',
+          message: `Current balance: ${balance} USDK`,
         };
+      },
+    }),
+
+    tool({
+      name: 'fundAgent',
+      description: 'Fund the agent wallet with USDK (test stablecoin). Use this when balance is low or user wants to add funds for demo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          amount: {
+            type: 'number',
+            description: 'Amount of USDK to add to the agent wallet',
+          },
+        },
+        required: ['amount'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { amount } = input as { amount: number };
+
+        if (amount <= 0 || amount > 1000) {
+          return {
+            success: false,
+            error: 'Amount must be between 0 and 1000 USDK',
+          };
+        }
+
+        try {
+          const response = await fetch('/api/fund-agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to fund agent',
+            };
+          }
+
+          return {
+            success: true,
+            funded: amount,
+            newBalance: data.newBalance,
+            message: `💰 Agent funded with ${amount} USDK! New balance: ${data.newBalance} USDK`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to fund agent',
+            details: String(error),
+          };
+        }
       },
     }),
 

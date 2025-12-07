@@ -68,20 +68,27 @@ function App() {
     }
   };
 
+  // Initial fetch and poll every 2 seconds while connected
   useEffect(() => {
     fetchBalance();
   }, []);
 
+  // Poll balance while session is connected (to catch agent spending)
+  useEffect(() => {
+    if (sessionStatus === "CONNECTED") {
+      const interval = setInterval(fetchBalance, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionStatus]);
+
   const handleDeposit = async () => {
-    if (!account?.address) return;
     setIsDepositing(true);
     try {
-      const res = await fetch("/api/deposit", {
+      const res = await fetch("/api/fund-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: parseFloat(depositAmount),
-          userWallet: account.address,
         }),
       });
       const data = await res.json();
@@ -533,7 +540,7 @@ function App() {
       </div>
 
       {/* Funding Panel (collapsible) */}
-      {showFundingPanel && account?.address && (
+      {showFundingPanel && (
         <div className="bg-gradient-to-r from-gold-dark/10 via-gold/5 to-gold-dark/10 border-b border-gold/20 p-4">
           <div className="flex items-center justify-between max-w-2xl mx-auto">
             <div className="text-sm">
