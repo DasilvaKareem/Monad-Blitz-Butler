@@ -66,6 +66,24 @@ export async function GET(request: NextRequest) {
         const menuLinkPattern = /(https?:\/\/[^\s]+(?:menu|order|food|delivery)[^\s]*)/gi;
         const menuLinks = content.match(menuLinkPattern) || [];
 
+        // Extract image URLs from content
+        const imagePattern = /(https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s"']*)?)/gi;
+        const imageUrls = content.match(imagePattern) || [];
+
+        // Filter for food-related images (avoid icons, logos, etc.)
+        const foodImages = imageUrls.filter((url: string) => {
+          const lowerUrl = url.toLowerCase();
+          // Exclude common non-food images
+          if (lowerUrl.includes('logo') || lowerUrl.includes('icon') || lowerUrl.includes('avatar')) {
+            return false;
+          }
+          // Prefer larger images (often have size in URL)
+          if (lowerUrl.includes('thumb') || lowerUrl.includes('small') || lowerUrl.includes('tiny')) {
+            return false;
+          }
+          return true;
+        }).slice(0, 6);
+
         return NextResponse.json({
           success: true,
           website,
@@ -73,9 +91,11 @@ export async function GET(request: NextRequest) {
           pricesFound: uniquePrices,
           foodCategories: [...new Set(foundCategories)],
           menuLinks: [...new Set(menuLinks)].slice(0, 5),
+          images: foodImages.length > 0 ? [...new Set(foodImages)] : null,
+          mainImage: foodImages[0] || null,
           rawContentPreview: content.substring(0, 500) + "...",
           note: menuItems.length > 0
-            ? `Found ${menuItems.length} menu items with prices.`
+            ? `Found ${menuItems.length} menu items with prices${foodImages.length > 0 ? ` and ${foodImages.length} images` : ''}.`
             : "Menu content extracted. Check prices and categories for details.",
         });
       }
@@ -122,11 +142,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Extract image URLs from HTML
+    const imgPattern = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const images: string[] = [];
+    let imgMatch;
+    while ((imgMatch = imgPattern.exec(html)) !== null && images.length < 6) {
+      let imgUrl = imgMatch[1];
+      // Skip tiny images, icons, logos
+      if (imgUrl.includes('logo') || imgUrl.includes('icon') || imgUrl.includes('1x1') || imgUrl.includes('pixel')) {
+        continue;
+      }
+      // Make relative URLs absolute
+      if (imgUrl.startsWith('/')) {
+        const url = new URL(website);
+        imgUrl = `${url.origin}${imgUrl}`;
+      } else if (!imgUrl.startsWith('http')) {
+        continue;
+      }
+      if (!images.includes(imgUrl)) {
+        images.push(imgUrl);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       website,
       pricesFound: uniquePrices,
       menuLinks: menuLinks.slice(0, 5),
+      images: images.length > 0 ? images : null,
+      mainImage: images[0] || null,
       note: "Basic extraction. For better results, ensure Tavily API is configured.",
     });
   } catch (error) {

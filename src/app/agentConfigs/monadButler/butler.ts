@@ -1,27 +1,39 @@
 import { RealtimeAgent, tool } from '@openai/agents/realtime';
 
-// Shared balance store (in production, use a database)
-let agentBalance = 0;
-
-export function getBalance(): number {
-  return agentBalance;
-}
-
-export function addBalance(amount: number): number {
-  agentBalance += amount;
-  return agentBalance;
-}
-
-export function spendBalance(amount: number): { success: boolean; newBalance: number; error?: string } {
-  if (agentBalance < amount) {
-    return {
-      success: false,
-      newBalance: agentBalance,
-      error: `Insufficient funds. Need ${amount} USDC, have ${agentBalance} USDC`,
-    };
+// Helper functions to interact with server-side balance API
+async function getBalance(): Promise<number> {
+  try {
+    const response = await fetch('/api/balance');
+    const data = await response.json();
+    return data.balance || 0;
+  } catch (error) {
+    console.error('Failed to get balance:', error);
+    return 0;
   }
-  agentBalance -= amount;
-  return { success: true, newBalance: agentBalance };
+}
+
+async function spendBalance(amount: number, description?: string): Promise<{ success: boolean; newBalance: number; error?: string }> {
+  try {
+    const response = await fetch('/api/spend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, description }),
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        newBalance: data.available || 0,
+        error: data.message || data.error || 'Payment failed',
+      };
+    }
+
+    return { success: true, newBalance: data.newBalance };
+  } catch (error) {
+    console.error('Failed to spend balance:', error);
+    return { success: false, newBalance: 0, error: 'Payment system error' };
+  }
 }
 
 export const butlerAgent = new RealtimeAgent({
@@ -45,6 +57,7 @@ USER PREFERENCES (check context.userPreferences):
 x402 PRICING (all services require payment):
 - Phone calls: 0.1 USDC per call
 - Web searches: 0.5 USDC per search
+- Menu image analysis (AI Vision): 0.25 USDC per image
 - Place orders: 1 USDC service fee + food cost + tax + delivery fees
 - DoorDash delivery: delivery estimate in USDC
 - Finding restaurants: FREE
@@ -54,12 +67,17 @@ x402 PRICING (all services require payment):
 WHAT YOU CAN DO:
 1. Search for restaurants using Google Places (FREE)
 2. Look up menus on restaurant websites (FREE)
-3. Help users decide what to order (FREE)
-4. Place food orders (PAID - 1 USDC + food cost)
-5. Check wallet balance (FREE)
-6. Web search for anything (PAID - 0.5 USDC)
-7. Call businesses on behalf of the user (PAID - 0.1 USDC)
-8. Request DoorDash delivery for orders (PAID - delivery fee applies)
+3. Analyze menu images with AI Vision to extract prices (PAID - 0.25 USDC)
+4. Help users decide what to order (FREE)
+5. Place food orders (PAID - 1 USDC + food cost)
+6. Check wallet balance (FREE)
+7. Web search for anything (PAID - 0.5 USDC)
+8. Call businesses on behalf of the user (PAID - 0.1 USDC)
+9. Request DoorDash delivery for orders (PAID - delivery fee applies)
+
+MENU IMAGE ANALYSIS:
+When getMenuDetails returns menu images, you can use analyzeMenuImage to extract exact prices.
+This uses GPT-4 Vision to read the menu and return structured item names, descriptions, and prices.
 
 DOORDASH DELIVERY FLOW - IMPORTANT:
 When a user wants DoorDash delivery, you MUST follow this confirmation flow:
@@ -89,7 +107,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
         additionalProperties: false,
       },
       execute: async () => {
-        const balance = getBalance();
+        const balance = await getBalance();
         return {
           balance,
           currency: 'USDC',
@@ -168,6 +186,8 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
             pricesFound: data.pricesFound || [],
             foodCategories: data.foodCategories || [],
             menuItems: data.menuItems || [],
+            images: data.images || [],
+            mainImage: data.mainImage || null,
             note: data.note,
           };
         } catch (error) {
@@ -175,6 +195,76 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
             success: false,
             website,
             error: 'Failed to scrape menu',
+          };
+        }
+      },
+    }),
+
+    tool({
+      name: 'analyzeMenuImage',
+      description: 'Use AI vision to analyze a menu image and extract all items with prices. PAID - costs 0.25 USDC. Use this when you have a menu image URL to get accurate prices.',
+      parameters: {
+        type: 'object',
+        properties: {
+          imageUrl: {
+            type: 'string',
+            description: 'URL of the menu image to analyze',
+          },
+        },
+        required: ['imageUrl'],
+        additionalProperties: false,
+      },
+      execute: async (input: any) => {
+        const { imageUrl } = input as { imageUrl: string };
+        const VISION_COST = 0.25;
+        const balance = await getBalance();
+
+        if (balance < VISION_COST) {
+          return {
+            success: false,
+            error: '402 Payment Required',
+            message: `Insufficient funds. Menu image analysis costs ${VISION_COST} USDC, but you only have ${balance} USDC.`,
+            required: VISION_COST,
+            available: balance,
+          };
+        }
+
+        try {
+          const response = await fetch('/api/analyze-menu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              success: false,
+              error: data.error || 'Failed to analyze menu image',
+            };
+          }
+
+          // Charge for the analysis
+          const result = await spendBalance(VISION_COST, 'Menu image analysis');
+
+          return {
+            success: true,
+            restaurantName: data.restaurantName,
+            menuItems: data.menuItems || [],
+            categories: data.categories || [],
+            currency: data.currency || 'USD',
+            notes: data.notes,
+            itemCount: data.itemCount,
+            cost: VISION_COST,
+            newBalance: result.newBalance,
+            message: `📸 Analyzed menu image. Found ${data.itemCount} items. Charged ${VISION_COST} USDC.`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: 'Failed to analyze menu image',
+            details: String(error),
           };
         }
       },
@@ -197,7 +287,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
       execute: async (input: any) => {
         const { query } = input as { query: string };
         const SEARCH_COST = 0.5;
-        const balance = getBalance();
+        const balance = await getBalance();
 
         // Check balance before searching
         if (balance < SEARCH_COST) {
@@ -215,7 +305,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
           const searchData = await searchResponse.json();
 
           // Charge for the search
-          const result = spendBalance(SEARCH_COST);
+          const result = await spendBalance(SEARCH_COST, 'Web search');
 
           return {
             success: true,
@@ -298,7 +388,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
         };
 
         const SERVICE_FEE = 1.0; // x402 service fee
-        const balance = getBalance();
+        const balance = await getBalance();
 
         // Calculate subtotal from items if not provided
         const calcSubtotal = subtotal || items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
@@ -330,7 +420,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
           };
         }
 
-        const result = spendBalance(totalWithServiceFee);
+        const result = await spendBalance(totalWithServiceFee, `Order at ${restaurant}`);
         if (!result.success) {
           return result;
         }
@@ -386,7 +476,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
         };
 
         const CALL_COST = 0.1;
-        const balance = getBalance();
+        const balance = await getBalance();
 
         // Check balance before calling
         if (balance < CALL_COST) {
@@ -423,7 +513,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
           }
 
           // Charge for the call
-          const result = spendBalance(CALL_COST);
+          const result = await spendBalance(CALL_COST, `Phone call to ${businessName || phoneNumber}`);
 
           const demoMessage = data.demoMode
             ? `🧪 TEST MODE: Call forwarded to admin number.\n   Would call: ${phoneNumber}${businessName ? ` (${businessName})` : ''}`
@@ -657,7 +747,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
         }
 
         // Check balance for delivery fee
-        const balance = getBalance();
+        const balance = await getBalance();
         if (balance < quote.estimatedFee) {
           return {
             success: false,
@@ -702,7 +792,7 @@ Be helpful and proactive. Don't ask about costs for searches - they're free!`,
           }
 
           // Charge for the delivery
-          const chargeResult = spendBalance(quote.estimatedFee);
+          const chargeResult = await spendBalance(quote.estimatedFee, 'DoorDash delivery');
 
           return {
             success: true,

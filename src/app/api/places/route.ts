@@ -25,12 +25,34 @@ export async function GET(request: NextRequest) {
     if (searchData.status === "OK" && searchData.results?.length > 0) {
       const places = await Promise.all(
         (searchData.results || []).slice(0, 5).map(async (place: any) => {
-          // Get place details for website, phone, hours
-          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,opening_hours,price_level,rating,user_ratings_total,url,reviews&key=${GOOGLE_PLACES_API_KEY}`;
+          // Get place details for website, phone, hours, and photos
+          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,opening_hours,price_level,rating,user_ratings_total,url,reviews,photos&key=${GOOGLE_PLACES_API_KEY}`;
 
           const detailsResponse = await fetch(detailsUrl);
           const detailsData = await detailsResponse.json();
           const details = detailsData.result || {};
+
+          // Build photo URLs from photo references
+          const photos: string[] = [];
+          if (details.photos && details.photos.length > 0) {
+            // Get up to 3 photos per restaurant
+            for (const photo of details.photos.slice(0, 3)) {
+              if (photo.photo_reference) {
+                const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photo.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
+                photos.push(photoUrl);
+              }
+            }
+          }
+
+          // Also check for photos in the search result
+          if (photos.length === 0 && place.photos && place.photos.length > 0) {
+            for (const photo of place.photos.slice(0, 3)) {
+              if (photo.photo_reference) {
+                const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photo.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
+                photos.push(photoUrl);
+              }
+            }
+          }
 
           return {
             name: place.name,
@@ -44,6 +66,8 @@ export async function GET(request: NextRequest) {
             googleMapsUrl: details.url || null,
             hours: details.opening_hours?.weekday_text || null,
             topReview: details.reviews?.[0]?.text?.substring(0, 150) + "..." || null,
+            photos: photos.length > 0 ? photos : null,
+            mainPhoto: photos[0] || null,
           };
         })
       );

@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { TranscriptItem } from "@/app/types";
-import Image from "next/image";
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { GuardrailChip } from "./GuardrailChip";
@@ -283,7 +282,9 @@ function Transcript({
           disabled={!canSend || !userText.trim()}
           className="bg-gold hover:bg-gold-light text-noir rounded-full px-2 py-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
         >
-          <Image src="arrow.svg" alt="Send" width={24} height={24} />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
+          </svg>
         </button>
       </div>
     </div>
