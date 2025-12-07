@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        phoneNumberId: undefined, // Will use default
         customer: {
           number: actualCallNumber,
           name: "Customer",
